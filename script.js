@@ -1,70 +1,134 @@
-import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
+const width = 800;
+const height = 400;
+const barWidth = width / 275;
 
-async function getData(url) {
-    try {
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error(`Response status: ${response.status}`);
-        }
+const tooltip = d3
+    .select(".chart")
+    .append("div")
+    .attr("id", "tooltip")
+    .style("opacity", 0);
 
-        const json = await response.json();
-        return json;
-    } catch (error) {
-        console.error(error.message);
-    }
-}
+const overlay = d3
+    .select(".chart")
+    .append("div")
+    .attr("class", "overlay")
+    .style("opacity", 0);
 
-const json = await getData(
-    "https://raw.githubusercontent.com/freeCodeCamp/ProjectReferenceData/master/GDP-data.json"
-);
-
-const data = json.data.map(d => [new Date(d[0]), d[1]]); // Convertir las fechas a objetos Date
-
-const width = 928;
-const height = 500;
-const marginTop = 30;
-const marginRight = 0;
-const marginBottom = 30;
-const marginLeft = 40;
-
-// Declarar la escala x (posición horizontal).
-const x = d3.scaleTime()
-    .domain(d3.extent(data, d => d[0]))
-    .range([marginLeft, width - marginRight]);
-
-// Declarar la escala y (posición vertical).
-const y = d3.scaleLinear()
-    .domain([0, d3.max(data, d => d[1])])
-    .range([height - marginBottom, marginTop]);
-
-// Crear el contenedor SVG.
-const svg = d3.select("section")
+const svgContainer = d3
+    .select(".chart")
     .append("svg")
-    .attr("width", width)
-    .attr("height", height)
-    .attr("viewBox", [0, 0, width, height])
-    .attr("style", "max-width: 100%; height: auto;");
+    .attr("width", 920)
+    .attr("height", 460);
 
-// Añadir un rectángulo para cada barra.
-svg.append("g")
-    .attr("fill", "steelblue")
-    .selectAll("rect")
-    .data(data)
-    .join("rect")
-    .attr("x", d => x(d[0]))
-    .attr("y", d => y(d[1]))
-    .attr("height", d => y(0) - y(d[1]))
-    .attr("width", 5); // Ajustar el ancho de las barras
+d3.json(
+    "https://raw.githubusercontent.com/FreeCodeCamp/ProjectReferenceData/master/GDP-data.json"
+)
+    .then((data) => {
+        svgContainer
+            .append("text")
+            .attr("transform", "rotate(-90)")
+            .attr("x", -250)
+            .attr("y", 80)
+            .text("Gross Domestic Product");
 
-// Añadir el eje x y la etiqueta.
-svg.append("g")
-    .attr("transform", `translate(0,${height - marginBottom})`)
-    .call(d3.axisBottom(x)
-        .ticks(d3.timeYear.every(5)) // Intervalo de 50 años
-        .tickFormat(d3.timeFormat("%Y"))
-    );
+        svgContainer
+            .append("text")
+            .attr("x", 490)
+            .attr("y", 450)
+            .text(
+                "More Information: http://www.bea.gov/national/pdf/nipaguid.pdf"
+            )
+            .attr("class", "info");
 
-// Añadir el eje y y la etiqueta, y eliminar la línea del dominio.
-svg.append("g")
-    .attr("transform", `translate(${marginLeft},0)`)
-    .call(d3.axisLeft(y));
+        const years = data.data.map(([date]) => {
+            const quarterMap = { "01": "Q1", "04": "Q2", "07": "Q3", 10: "Q4" };
+            const quarter = quarterMap[date.substring(5, 7)];
+            return `${date.substring(0, 4)} ${quarter}`;
+        });
+
+        const yearsDate = data.data.map(([date]) => new Date(date));
+        const values = data.data.map(([date, gdp]) => [new Date(date), gdp]);
+
+        // Ajuste de la última barra para la escala X
+        const xMax = d3.timeMonth.offset(d3.max(yearsDate), 3);
+
+        const xScale = d3
+            .scaleTime()
+            .domain([d3.min(values[0]), xMax])
+            .range([0, width]);
+
+        svgContainer
+            .append("g")
+            .call(d3.axisBottom(xScale))
+            .attr("id", "x-axis")
+            .attr("transform", "translate(60, 400)");
+
+        const GDP = data.data.map(([, gdp]) => gdp);
+        const gdpMax = d3.max(GDP);
+
+        // var linearScale = d3
+        //     .scaleLinear()
+        //     .domain([0, gdpMax])
+        //     .range([0, height]);
+
+        // scaledGDP = GDP.map(function (item) {
+        //     return linearScale(item);
+        // });
+
+        var yScale = d3.scaleLinear().domain([0, gdpMax]).range([height, 0]);
+
+        svgContainer
+            .append("g")
+            .call(d3.axisLeft(yScale))
+            .attr("id", "y-axis")
+            .attr("transform", "translate(60, 0)");
+
+        d3.select("svg")
+            .selectAll("rect")
+            .data(GDP)
+            .enter()
+            .append("rect")
+            .attr("data-date", (d, i) => data.data[i][0])
+            .attr("data-gdp", (d, i) => GDP[i])
+            .attr("index", (d, i) => i)
+            .attr("class", "bar")
+            .attr("x", (d, i) => xScale(yearsDate[i]))
+            .attr("y", (d) => yScale(d))
+            .attr("width", barWidth)
+            .attr("height", (d) => height - yScale(d))
+            .attr("transform", "translate(60, 0)")
+            .style("fill", "#33adff")
+            .attr("transform", "translate(60, 0)")
+            .on("mouseover", function (event, d, i) {
+                // d or datum is the height of the
+                // current rect
+                var i = this.getAttribute("index");
+
+                overlay
+                    .transition()
+                    .duration(0)
+                    .style("height", `${height - yScale(d)}px`)
+                    .style("width", `${barWidth}px`)
+                    .style("opacity", 0.9)
+                    .style("top", `${yScale(d)}px`)
+                    .style("left", i * barWidth + "px")
+                    .style("transform", "translateX(60px)");
+
+                tooltip.transition().duration(200).style("opacity", 0.9);
+                tooltip
+                    .html(
+                        `${years[i]}<br>$${d
+                            .toFixed(1)
+                            .replace(/\B(?=(\d{3})+(?!\d))/g, ",")} Billion`
+                    )
+                    .attr("data-date", data.data[i][0])
+                    .style("left", `${i * barWidth}px`)
+                    .style("top", `${yScale(d) - 100}px`)
+                    .style("transform", "translateX(60px)");
+            })
+            .on("mouseout", () => {
+                tooltip.transition().duration(200).style("opacity", 0);
+                overlay.transition().duration(200).style("opacity", 0);
+            });
+    })
+    .catch((e) => console.log(e));

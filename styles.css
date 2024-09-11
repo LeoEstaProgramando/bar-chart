@@ -32,7 +32,7 @@
   text-align: center;
   font-size: 2.5em;
 }
-.main .container .visHolder {
+.main .container #chart {
   position: absolute;
   top: 6em;
 }
